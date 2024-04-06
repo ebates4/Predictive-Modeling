@@ -1,0 +1,95 @@
+---
+title: "Assignment 5"
+author: "Emily Bates"
+date: "2024-03-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Question 2
+
+For parts (a) through (c), indicate which of i. through iv. is correct. Justify your answer.
+(a) The lasso, relative to least squares, is:
+  i. More flexible and hence will give improved prediction accuracy when its increase in bias is less than its decrease in variance.
+  ii. More flexible and hence will give improved prediction accuracy when its increase in variance is less than its decrease in bias.
+  iii. Less flexible and hence will give improved prediction accuracy when its increase in bias is less than its decrease in variance.
+  iv. Less flexible and hence will give improved prediction accuracy when its increase in variance is less than its decrease in bias.
+  
+  III.Lasso is similar to ridge regression, in that it shrinks coefficients, but it goes further to reduce some coefficients to zero - removing some variables.This reduces the flexibility of the model compared to ordinary least squares. This reduction in flexibility decreases variance but may slightly increase bias.
+  
+(b) Repeat (a) for ridge regression relative to least squares.
+  III.Ridge regression adds a penalty term to the coefficients that reduces their magnitudes. This penalty term shrinks the coefficients towards zero, effectively reducing the flexibility of the model compared to ordinary least squares. This reduction in flexibility decreases variance but may slightly increase bias.
+
+(c) Repeat (a) for non-linear methods relative to least squares.
+  II. Non-linear methods introduce more complexity and flexibility to the model compared to ordinary least squares. This increased flexibility can lead to higher variance but may also capture more complex patterns in the data, potentially reducing bias.
+### Question 9
+
+In this exercise, we will predict the number of applications received using the other variables in the College data set.
+(a) Split the data set into a training set and a test set.
+```{r}
+library(caret)
+library(glmnet)
+library(ISLR2)
+college = College
+
+# 80/20 Split
+set.seed(1)
+index = sample(nrow(college), 0.8*nrow(college), replace = F)
+college_train = college[index,]
+college_test = college[-index,]
+```
+(b) Fit a linear model using least squares on the training set, and
+report the test error obtained.
+```{r}
+lm1 = lm(Apps ~ ., data = college_train)
+summary(lm1)
+lm1_pred=predict(lm1, college_test)
+lm1_test_error=mean((college_test$Apps-lm1_pred)^2)
+lm1_test_error
+```
+The test error obtained is 1567324. 
+
+(c) Fit a ridge regression model on the training set, with λ chosen by cross-validation. Report the test error obtained.
+```{r}
+set.seed(1)
+rm1 = cv.glmnet(as.matrix(college_train[, -1]), college_train$Apps, alpha = 0)
+best_lambda_ridge = rm1$lambda.min
+best_lambda_ridge
+
+rm1_pred <- predict(rm1, s=best_lambda_ridge, newx=as.matrix(college_test[, -1]))
+rm1_test_error <- mean((rm1_pred-college_test$Apps)^2)
+rm1_test_error
+```
+The test error obtained is 268542.9.
+
+(d) Fit a lasso model on the training set, with λ chosen by cross- validation. Report the test error obtained, along with the number of non-zero coefficient estimates.
+```{r}
+set.seed(1)
+lasso_model <- cv.glmnet(as.matrix(college_train[, -1]), college_train$Apps, alpha = 1)
+best_lambda_lasso <- lasso_model$lambda.min
+best_lambda_lasso
+
+lasso_pred <- predict(lasso_model, s = best_lambda_lasso, newx = as.matrix(college_test[, -1]))
+lasso_test_error <- mean((lasso_pred - college_test$Apps)^2)
+lasso_test_error
+
+num_non_zero_coef <- sum(coef(lasso_model, s = best_lambda_lasso) != 0)
+num_non_zero_coef
+```
+The test error obtained is 13706.72. There are 2 non-zero coefficients.
+
+(g) Comment on the results obtained. How accurately can we predict the number of college applications received? Is there much difference among the test errors resulting from these approaches?
+
+To summarize test errors for three methods: 
+
+Linear Regression: Test error of approximately 1,567,324.
+Ridge Regression: Test error of approximately 268,542.9.
+Lasso Regression: Test error of approximately 13,706.72 with 2 non-zero coefficients.
+
+We can observe a significant improvement in prediction accuracy when moving from linear regression to ridge regression, and then to lasso regression. Lasso regression outperforms both linear and ridge regression models with substantially lower test error.This indicates tje lasso model's effectiveness in capturing the underlying patterns in the data and making accurate predictions. Additionally, having only two non-zero coefficients shows that the lasso model successfully performed feature selection, which could enhance model interpretability and generalization to new data.
+
+
+

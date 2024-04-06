@@ -1,0 +1,357 @@
+---
+title: "Assignment 3"
+author: "Emily Bates"
+date: "2024-02-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Question 13
+
+This question should be answered using the Weekly data set, which is part of the ISLR2 package. This data is similar in nature to the Smarket data from this chapter's lab, except that it contains 1,089 weekly returns for 21 years, from the beginning of 1990 to the end of 2010.
+
+(a) Produce some numerical and graphical summaries of the Weekly data. Do there appear to be any patterns?
+```{r}
+library(ISLR2); library(corrplot); library(MASS); library(caret);
+library(car); library(dplyr); library(class);library(e1071)
+```
+
+```{r}
+pairs(Weekly)
+summary(Weekly)
+str(Weekly)
+# Looking at the relationships between the numeric variables
+weekly_num <- dplyr::select_if(Weekly, is.numeric)
+M = cor(weekly_num)
+corrplot(M, method = c("number"))
+```
+
+Volume and Year appear to be correlated.
+
+(b) Use the full data set to perform a logistic regression with Direction as the response and the five lag variables plus Volume as predictors. Use the summary function to print the results. Do any of the predictors appear to be statistically significant? If so, which ones?
+
+```{r}
+m1 = glm(formula = Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume,data = Weekly, family = binomial)
+summary(m1)
+vif(m1)
+```
+
+Lag2 appears to be statistically significant.
+
+(c) Compute the confusion matrix and overall fraction of correct predictions. Explain what the confusion matrix is telling you about the types of mistakes made by logistic regression.
+
+```{r}
+# Predicting the responses on m1 
+predprob_log <- predict.glm(m1, Weekly, type = "response")
+predclass_log = ifelse(predprob_log >= 0.5, "Up", "Down")
+
+# Confusion matrix
+caret::confusionMatrix(as.factor(predclass_log), Weekly$Direction, positive = "Up")
+
+# Accuracy    : 0.5611
+# Sensitivity : 0.9207         
+# Specificity : 0.1116
+```
+
+The model has high sensitivity and low specificity, meaning it correctly predicts up direction, but is quite bad at predicting the down direction. Overall, accuracy is 56%.
+
+(d) Now fit the logistic regression model using a training data period from 1990 to 2008, with Lag2 as the only predictor. Compute the confusion matrix and the overall fraction of correct predictions for the held out data (that is, the data from 2009 and 2010).
+
+```{r}
+#split into train and test
+weekly_train = Weekly %>% filter(Weekly$Year < 2009)
+weekly_test = Weekly %>% filter(Weekly$Year > 2008)
+```
+
+```{r}
+m2 = glm(formula = Direction ~ Lag2,data = weekly_train, family = binomial)
+summary(m2)
+```
+
+```{r}
+# Predicting the responses on m2 
+predprob_log2 <- predict.glm(m2, weekly_test, type = "response")
+predclass_log2 = ifelse(predprob_log2 >= 0.5, "Up", "Down")
+
+# Confusion matrix
+caret::confusionMatrix(as.factor(predclass_log2), weekly_test$Direction, positive = "Up")
+```
+
+(e) Repeat (d) using LDA.
+
+```{r}
+lda.model = lda(Direction ~ Lag2, data = weekly_train)
+lda.model
+```
+
+```{r}
+predictions.lda = predict(lda.model, weekly_test)
+
+caret::confusionMatrix(as.factor(predictions.lda$class), weekly_test$Direction)
+```
+
+(f) Repeat (d) using QDA.
+
+```{r}
+qda.model = qda(Direction ~ Lag2, data = weekly_train)
+qda.model
+```
+```{r}
+predictions.qda = predict(qda.model, weekly_test)
+
+caret::confusionMatrix(as.factor(predictions.qda$class), weekly_test$Direction)
+```
+(g) Repeat (d) using KNN with K = 1.
+```{r}
+#convert direction
+weekly_train$Direction_dummy <- ifelse(weekly_train$Direction == "Up", 1, 0)
+weekly_test$Direction_dummy <- ifelse(weekly_test$Direction == "Up", 1, 0)
+```
+```{r}
+#KNN model
+set.seed(1)
+knn.model <- knn(train = as.matrix(weekly_train$Lag2), test = as.matrix(weekly_test$Lag2), cl = weekly_train$Direction_dummy, k = 1)
+predclass_knn <- ifelse(knn.model == 1, "Up", "Down")
+```
+
+
+```{r}
+confusionMatrix(as.factor(predclass_knn), weekly_test$Direction, positive = "Up")
+```
+(h) Repeat (d) using naive Bayes.
+```{r}
+nb.model = naiveBayes(Direction~Lag2 ,data=weekly_train)
+predictions.nb = predict(nb.model, weekly_test)
+caret::confusionMatrix(as.factor(predictions.nb), weekly_test$Direction)
+```
+(i) Which of these methods appears to provide the best results on this data?
+
+The logistic regression model appears to provide the best results with being able to correctly predict the outcome 62.5% of the time.
+
+(j) Experiment with different combinations of predictors, including possible transformations and interactions, for each of the methods. Report the variables, method, and associated confusion matrix that appears to provide the best results on the held out data. Note that you should also experiment with values for K in the KNN classifier.
+
+```{r}
+#KNN Model 2
+set.seed(1)
+knn.model2 <- knn(train = as.matrix(weekly_train$Lag2), test = as.matrix(weekly_test$Lag2), cl = weekly_train$Direction_dummy, k = 4)
+predclass_knn2 <- ifelse(knn.model2 == 1, "Up", "Down")
+confusionMatrix(as.factor(predclass_knn2), weekly_test$Direction, positive = "Up")
+```
+
+```{r}
+#LDA Model 2
+lda.model2 = lda(Direction ~ Lag2^2, data = weekly_train)
+predictions.lda2 = predict(lda.model2, weekly_test)
+
+caret::confusionMatrix(as.factor(predictions.lda2$class), weekly_test$Direction)
+```
+
+```{r}
+qda.model2 = qda(Direction ~ Lag2^2, data = weekly_train)
+predictions.qda2 = predict(qda.model2, weekly_test)
+caret::confusionMatrix(as.factor(predictions.qda2$class), weekly_test$Direction)
+```
+Increasing K to 4 improved the accuracy from 50% to 61.5% for the KNN model. I tried squaring lag2 for QDA and LDA which didn't change things.  
+
+### Question 14
+In this problem, you will develop a model to predict whether a given car gets high or low gas mileage based on the Auto data set.
+
+(a) Create a binary variable, mpg01, that contains a 1 if mpg contains a value above its median, and a 0 if mpg contains a value below its median. You can compute the median using the median() function. Note you may find it helpful to use the data.frame() function to create a single data set containing both mpg01 and the other Auto variables.
+
+```{r}
+auto = data.frame(Auto)
+auto$mpg01 = ifelse(auto$mpg > median(auto$mpg), 1, 0)
+```
+
+(b) Explore the data graphically in order to investigate the association between mpg01 and the other features. Which of the other features seem most likely to be useful in predicting mpg01? Scatterplots and boxplots may be useful tools to answer this question. Describe your findings.
+
+```{r}
+pairs(auto)
+summary(auto)
+str(auto)
+```
+
+```{r}
+# Correlation
+auto_num <- dplyr::select_if(auto, is.numeric)
+corrplot(cor(auto_num), method = c("number"))
+```
+It looks like cylinder, displacement, and weight are most correlated and horsepower and origin are also correlated (but a little less so).
+
+(c) Split the data into a training set and a test set.
+
+```{r}
+set.seed(1)
+index = sample(nrow(auto), 0.8*nrow(auto), replace = F) # 80/20 split
+auto_train = auto[index,]
+auto_test = auto[-index,]
+```
+
+(d) Perform LDA on the training data in order to predict mpg01 using the variables that seemed most associated with mpg01 in (b). What is the test error of the model obtained?
+
+```{r}
+auto.lda = lda(mpg01 ~ cylinders + displacement + weight + horsepower + origin, data= auto_train)
+predictions.lda.auto = predict(auto.lda, auto_test)
+caret::confusionMatrix(as.factor(predictions.lda.auto$class), as.factor(auto_test$mpg01))
+```
+The error for the LDA model is 8.86%.
+
+(e) Perform QDA on the training data in order to predict mpg01 using the variables that seemed most associated with mpg01 in (b). What is the test error of the model obtained?
+```{r}
+auto.qda = qda(mpg01 ~ cylinders + displacement + weight + horsepower + origin, data= auto_train)
+predictions.qda.auto = predict(auto.qda, auto_test)
+caret::confusionMatrix(as.factor(predictions.qda.auto$class), as.factor(auto_test$mpg01))
+```
+The error for the QDA model is 10.13%.
+
+(f) Perform logistic regression on the training data in order to pre- dict mpg01 using the variables that seemed most associated with mpg01 in (b). What is the test error of the model obtained?
+
+```{r}
+auto.log = glm(formula = mpg01 ~ cylinders + displacement + weight + horsepower + origin,data = auto_train, family = binomial)
+summary(auto.log)
+```
+```{r}
+auto.log2 = glm(formula = mpg01 ~ weight + horsepower,data = auto_train, family = binomial)
+summary(auto.log2)
+```
+```{r}
+predprob_log_auto <- predict.glm(auto.log2, auto_test, type = "response")
+predclass_log_auto = ifelse(predprob_log_auto >= 0.5, 1, 0)
+
+
+caret::confusionMatrix(as.factor(predclass_log_auto), as.factor(auto_test$mpg01), positive = "1")
+```
+The error for the logistic model is 12.66%
+
+(g) Perform naive Bayes on the training data in order to predict mpg01 using the variables that seemed most associated with mpg01 in (b). What is the test error of the model obtained?
+
+```{r}
+auto.nb = naiveBayes(mpg01~ cylinders + displacement + weight + horsepower + origin,data=auto_train)
+predictions.nb.auto = predict(auto.nb, auto_test)
+caret::confusionMatrix(as.factor(predictions.nb.auto), as.factor(auto_test$mpg01))
+```
+8.86% error for the naive Bayes model.
+
+(h) Perform KNN on the training data, with several values of K, in order to predict mpg01. Use only the variables that seemed most associated with mpg01 in (b). What test errors do you obtain? Which value of K seems to perform the best on this data set?
+
+```{r}
+set.seed(1)
+knn.model.auto <- knn(train = auto_train[, c("cylinders", "displacement", "weight", "horsepower", "origin")], test = auto_test[, c("cylinders", "displacement", "weight", "horsepower", "origin")], cl = auto_train$mpg01, k = 3)
+predclass_knn_auto <- ifelse(knn.model.auto == 1, 1, 0)
+confusionMatrix(as.factor(predclass_knn_auto), as.factor(auto_test$mpg01), positive = "1")
+
+# KNN - Accuracy (sensitivity / specificity)
+# 1 - 0.8734 
+# 2 - 0.8608
+# 3 - 0.8987 (.8919 / .9048)
+# 4 - 0.8987 (.8649 / .9286)
+# 5 - 0.8987 (.8919 / .9048)
+# 6 - 0.8987 (.9189 / .8810)
+# 7 - 0.8987 (.9189 / .8810)
+# 8 - 0.8861
+```
+Obtained 10.13% error for the KNN model. The K value of 3 seemed to perform the best. 
+
+### Question 16
+Using the Boston data set, fit classification models in order to predict whether a given census tract has a crime rate above or below the median. Explore logistic regression, LDA, naive Bayes, and KNN models using various subsets of the predictors. Describe your findings.
+Hint: You will have to create the response variable yourself, using the variables that are contained in the Boston data set.
+
+View(Boston)
+
+```{r}
+#create response variable
+boston = data.frame(Boston)
+boston$crime_rate = ifelse(boston$crim > median(boston$crim), 1, 0)
+```
+
+```{r}
+pairs(boston)
+summary(boston)
+str(boston)
+```
+
+```{r}
+# Correlation
+corrplot(cor(boston), method = c("color"))
+```
+
+```{r}
+#boston$chas = as.factor(boston$chas)
+#boston$crime_rate = as.factor(boston$crime_rate)
+
+### Splitting into test and train
+set.seed(1)
+ind = sample(nrow(boston), 0.8*nrow(boston), replace = F)
+boston_train = boston[ind,]
+boston_test = boston[-ind,]
+```
+
+```{r}
+# Logistic Regression
+b1 = glm(formula = crime_rate ~ . -crim, data = boston_train, family = binomial)
+summary(b1)
+vif(b1)
+```
+```{r}
+# log model #1
+predprob_log_boston <- predict.glm(b1, boston_test, type = "response")
+predclass_log_boston = ifelse(predprob_log_boston >= 0.5,yes = 1,0)
+caret::confusionMatrix(as.factor(predclass_log_boston), as.factor(boston_test$crime_rate), positive = "1")
+```
+```{r}
+# Stepwise Selection with AIC
+null_model = glm(crime_rate ~ 1, data = boston_train, family = binomial)
+full_model = b1
+step.model.AIC = step(null_model, scope = list(upper = full_model),
+                      direction = "both", test = "Chisq", trace = F) 
+summary(step.model.AIC) 
+```
+```{r}
+# Best model based on stepwise 
+b2 <- glm(crime_rate ~ nox + rad + tax + ptratio + dis + zn + medv + age + black, boston_train, family = binomial)
+
+# log model #2
+
+predprob_log_boston2 <- predict.glm(b2, boston_test, type = "response")
+predclass_log_boston2 = ifelse(predprob_log_boston2 >= 0.5,yes = 1,0)
+caret::confusionMatrix(as.factor(predclass_log_boston2), as.factor(boston_test$crime_rate), positive = "1")
+```
+
+
+
+```{r}
+# LDA
+boston.lda = lda(crime_rate ~ nox + rad + tax + ptratio + dis + zn + medv + age + black, data= boston_train)
+predictions.lda.boston = predict(boston.lda, boston_test)
+caret::confusionMatrix(as.factor(predictions.lda.boston$class), as.factor(boston_test$crime_rate))
+
+```
+```{r}
+# Naive Bayes
+
+boston.nb = naiveBayes(crime_rate ~ nox + rad + tax + ptratio + dis + zn + medv + age + black,data=boston_train)
+predictions.nb.boston = predict(boston.nb, boston_test)
+caret::confusionMatrix(as.factor(predictions.nb.boston), as.factor(boston_test$crime_rate))
+```
+```{r}
+# KNN
+set.seed(1)
+knn.model.boston <- knn(train = boston_train[, c("nox", "rad", "tax", "ptratio", "dis", "zn","medv","age","black")], test = boston_test[, c("nox", "rad", "tax", "ptratio", "dis", "zn","medv","age","black")], cl = boston_train$crime_rate, k = 2)
+predclass_knn_boston <- ifelse(knn.model.boston == 1, 1, 0)
+confusionMatrix(as.factor(predclass_knn_boston), as.factor(boston_test$crime_rate), positive = "1")
+
+
+# KNN - Accuracy
+# 1 - 0.902
+# 2 - 0.9118
+# 3 - 0.902 
+# 4 - 0.902
+# 5 - 0.8922
+# 6 - 0.8824
+# 8 - 0.8725
+
+```
+The model with the highest accuracy was the KNN model when K=2. This model has an accuracy of 91.18%. According to stepwise selection, the best model includes nox, rad, tax, ptratio, dis, zn, medv, age, and black.

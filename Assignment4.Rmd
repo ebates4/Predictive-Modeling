@@ -1,0 +1,257 @@
+---
+title: "Assignment 4"
+author: "Emily Bates"
+date: "2024-03-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Question 3
+
+We now review k-fold cross-validation. (a) Explain how k-fold cross-validation is implemented.
+
+K-Fold Cross Validation is used to evaluate the performance of your predictive model. Previously we've learned about splitting our data into 1 train set and 1 test set. The K-Fold approach differs in that you divide your data into "k" equal size folds. Then the model is trained k amount of times. During each training, one fold is used as the validation set while the k-1 folds are the training set. Each time that the model is trained, performance metrics are calculated. The performance metrics are averaged to give the model's overall performance scores (for example, accuracy).
+
+(b) What are the advantages and disadvantages of k-fold cross- validation relative to: i. The validation set approach? ii. LOOCV?
+
+Advantages relative to validation set approach: It can provide a better estimate of model performance because it's training and validating on all of the data. For validation set approach, you could get very difference performance depending on how the data was split. Disadvantages relative to validation set approach: The performance metrics will vary depending on how many folds you choose. It is also computationally more "expensive" because you are training and evaluating multiple times. Advantages relative to LOOCV: It is less computationally "expensive" because it involves fewer iterations. Would be less biased than LOOCV because it averages over k-folds rather than being influenced by a single data point for each iteration. Disadvantages relative LOOCV: Again, the performance metrics could be more variable than LOOCV depending on how many folds you choose for k. LOOCV tends to have lower bias but higher variance compared to k-folds cv.
+
+### Question 5
+
+In Chapter 4, we used logistic regression to predict the probability of default using income and balance on the Default data set. We will now estimate the test error of this logistic regression model using the validation set approach. Do not forget to set a random seed before beginning your analysis.
+
+(a) Fit a logistic regression model that uses income and balance to predict default.
+
+```{r}
+library(ISLR2); library(corrplot); library(MASS); library(caret); library(car); library(dplyr); library(class);library(e1071);library(boot)
+```
+
+```{r}
+default = Default
+str(default)
+```
+
+```{r}
+m5a = glm(formula = default ~ income + balance, data = default, family = binomial)
+summary(m5a)
+```
+
+(b) Using the validation set approach, estimate the test error of this model. In order to do this, you must perform the following steps:
+
+```{=html}
+<!-- -->
+```
+i.  Split the sample set into a training set and a validation set.
+ii. Fit a multiple logistic regression model using only the train- ing observations.
+iii. Obtain a prediction of default status for each individual in the validation set by computing the posterior probability of default for that individual, and classifying the individual to the default category if the posterior probability is greater than 0.5.
+iv. Compute the validation set error, which is the fraction of the observations in the validation set that are misclassified.
+
+```{r}
+# i. 
+set.seed(42)
+index = sample(nrow(default), 0.8*nrow(default), replace = F) # 80/20 split
+default_train = default[index,]
+default_val = default[-index,]
+```
+
+```{r}
+#ii. 
+m5b = glm(formula = default ~ income + balance, data = default_train, family = binomial)
+```
+
+```{r}
+#iii.
+predprob_log_default = predict.glm(m5b, default_val, type = "response")
+predclass_log_default = ifelse(predprob_log_default >= 0.5, "Yes", "No")
+confusionMatrix(as.factor(predclass_log_default), as.factor(default_val$default), positive = "Yes")
+```
+```{r}
+#iv. (1 - accuracy) is error
+print(1-0.9745)
+```
+
+
+(c) Repeat the process in (b) three times, using three different splits of the observations into a training set and a validation set. Comment on the results obtained.
+
+```{r}
+set.seed(42)
+train_ctrl <- trainControl(method = "cv",   
+                     number = 3)      #number is folds 
+
+
+m5c <- train(default ~ income + balance, 
+             data = default, 
+             method = "glm", 
+             family = binomial, 
+             trControl = train_ctrl)
+print(m5c)
+
+print(m5c$results)
+```
+Accuracy is 0.9738002 and error is 0.0261998. This is very similar to the previous method where error was 0.0255. 
+
+(d) Now consider a logistic regression model that predicts the probability of default using income, balance, and a dummy variable for student. Estimate the test error for this model using the validation set approach. Comment on whether or not including a dummy variable for student leads to a reduction in the test error rate.
+
+```{r}
+set.seed(42)
+#dummy variable creation
+default$student_dummy <- ifelse(default$student == "Yes", 1, 0)
+default_train$student_dummy <- ifelse(default_train$student == "Yes", 1, 0)
+default_val$student_dummy <- ifelse(default_val$student == "Yes", 1, 0)
+```
+```{r}
+m5d = glm(formula = default ~ income + balance + student_dummy, data = default_train, family = binomial)
+
+predprob_log_default2 = predict.glm(m5d, default_val, type = "response")
+predclass_log_default2 = ifelse(predprob_log_default2 >= 0.5, "Yes", "No")
+confusionMatrix(as.factor(predclass_log_default2), as.factor(default_val$default), positive = "Yes")
+```
+```{r}
+# error
+print(1-0.9755)
+```
+Including the dummy student variable decreased the test error by 0.001.
+
+### Question 6
+
+We continue to consider the use of a logistic regression model to predict the probability of default using income and balance on the Default data set. In particular, we will now compute estimates for the standard errors of the income and balance logistic regression coefficients in two different ways: (1) using the bootstrap, and (2) using the standard formula for computing the standard errors in the glm() function. Do not forget to set a random seed before beginning your analysis.
+
+(a) Using the summary() and glm() functions, determine the estimated standard errors for the coefficients associated with income and balance in a multiple logistic regression model that uses both predictors.
+
+```{r}
+set.seed(42)
+
+m6a = glm(formula = default ~ income + balance, data = default, family = binomial )
+summary(m6a)
+summary(m6a)$coefficients[, 2]
+```
+Estimated standard errors:  
+(Intercept)       income      balance 
+4.347564e-01 4.985167e-06 2.273731e-04 
+
+(b) Write a function, boot.fn(), that takes as input the Default data set as well as an index of the observations, and that outputs the coefficient estimates for income and balance in the multiple logistic regression model.
+
+```{r}
+boot.fn = function(data, index) {
+  # Subset data
+  data_subset = data[index, ]
+  # Fit model
+  model = glm(default ~ income + balance, data = data_subset, family = binomial)
+  # Return coefficient estimates
+  return(coef(model))
+}
+```
+
+(c) Use the boot() function together with your boot.fn() function to estimate the standard errors of the logistic regression coefficients for income and balance.
+
+```{r}
+set.seed(42)
+boot(data = default, 
+                     statistic = boot.fn, 
+                     R = 1000) # R is number of iterations
+
+```
+Standard errors: 4.435e-01, 5.07e-06,2.299e-04
+
+(d) Comment on the estimated standard errors obtained using the glm() function and using your bootstrap function.
+
+The standard errors are very similar when you compare the two methods. 
+
+### Question 9
+
+We will now consider the Boston housing data set, from the ISLR2 library.
+
+(a) Based on this data set, provide an estimate for the population mean of medv. Call this estimate μˆ.
+
+```{r}
+boston = Boston
+mu_hat = mean(boston$medv)
+mu_hat
+```
+
+(b) Provide an estimate of the standard error of μˆ. Interpret this result. Hint: We can compute the standard error of the sample mean by dividing the sample standard deviation by the square root of the number of observations.
+
+```{r}
+se_mu_hat = stats::sd(boston$medv)/(length(boston$medv)^(1/2))
+se_mu_hat
+```
+
+
+(c) Now estimate the standard error of μˆ using the bootstrap. How does this compare to your answer from (b)?
+
+```{r}
+set.seed(42)
+# bootstrapping function to calculate sample mean
+boot_fn = function(data, indices) {
+  mean(data[indices])}
+
+# bootstrap
+boot_results =boot(boston$medv, boot_fn, R = 1000)
+
+boot_results
+
+```
+SE from B is 0.4088611 and SE here is 0.4009216. They are very similar, with this error being slightly lower.
+
+(d) Based on your bootstrap estimate from (c), provide a 95 % confidence interval for the mean of medv. Compare it to the results obtained using t.test(Boston\$medv). Hint: You can approximate a 95 % confidence interval using the formula [μˆ − 2SE(μˆ), μˆ + 2SE(μˆ)].
+
+```{r}
+se_bootstrap <- sd(boot_results$t)
+lower_bound <- mu_hat - 2 * se_bootstrap
+upper_bound <- mu_hat + 2 * se_bootstrap
+lower_bound
+upper_bound
+```
+Based on bootstrap, the CE is 21.73 - 23.33. 
+
+```{r}
+t_test_result = t.test(Boston$medv)
+t_test_result$conf.int
+
+```
+Based on t-test, the CE is 21.72953 - 23.33608. These results are basically the same as the bootstrap estimate. 
+
+(e) Based on this data set, provide an estimate, μˆmed, for the median value of medv in the population.
+
+```{r}
+mu_hat_median = median(boston$medv)
+mu_hat_median
+```
+
+(f) We now would like to estimate the standard error of μˆmed. Unfortunately, there is no simple formula for computing the standard error of the median. Instead, estimate the standard error of the median using the bootstrap. Comment on your findings.
+
+```{r}
+set.seed(42)
+# bootstrapping function to calculate sample median
+boot_fn_median = function(data, indices) {
+  median(data[indices])}
+
+boot_results_median <- boot(boston$medv, boot_fn_median, R = 1000)
+
+boot_results_median
+
+```
+SE is 0.3661785.
+
+(g) Based on this data set, provide an estimate for the tenth percentile of medv in Boston census tracts. Call this quantity μˆ0.1. (You can use the quantile() function.)
+
+```{r}
+mu_0.1_hat <- quantile(boston$medv, 0.1)
+
+mu_0.1_hat
+```
+
+(h) Use the bootstrap to estimate the standard error of μˆ0.1. Comment on your findings.
+
+```{r}
+set.seed(42)
+boot_fn_10th_percentile <- function(data, indices) {
+  quantile(data[indices], 0.1)}
+
+boot_results_10th_percentile <- boot(boston$medv, boot_fn_10th_percentile, R = 1000)
+boot_results_10th_percentile
+```
+Standard error estimate is 0.4948966 - slightly bigger than previous standard error. 
